@@ -252,6 +252,8 @@ function App() {
       setConnecting(false);
       setReconnecting(false);
       setUnreachable(true);
+      // The player sees a friendly message; this says which address actually failed.
+      console.warn(`[Firefly Feast] Could not reach the game server at ${WS_URL}`);
     }
   }, [scheduleResume]);
 
