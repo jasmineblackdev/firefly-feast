@@ -26,6 +26,17 @@ const STALE_AFTER_MS = 5000;
 // React interface commits at most this often, and only when something it shows changed.
 const UI_COMMIT_MS = 150;
 const UNREACHABLE_MESSAGE = 'Can’t reach the game server. Check your internet and try again.';
+// Shown only when we can prove this address serves the front-end but has no game server,
+// which is what a front-end-only host (like a plain Vercel deploy) looks like.
+const NO_SERVER_MESSAGE = 'This address can show the game, but the game server isn’t running here yet.';
+
+// ws://host/ws -> http://host/health
+function healthUrlFor(wsUrl) {
+  return wsUrl.replace(/^ws:/, 'http:').replace(/^wss:/, 'https:').replace(/\/ws$/, '/health');
+}
+const socketIsSameOrigin = (() => {
+  try { return new URL(WS_URL).host === location.host; } catch { return false; }
+})();
 const LOBBY_SLOTS = 8;
 
 const prefersReducedMotion = () =>
@@ -152,6 +163,7 @@ function App() {
   const [error, setError] = useState('');
   const [connecting, setConnecting] = useState(false);
   const [unreachable, setUnreachable] = useState(false);
+  const [serverMissing, setServerMissing] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [showRules, setShowRules] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -239,6 +251,23 @@ function App() {
     }, RETRY_DELAY_MS);
   }, []);
 
+  // Ask this address whether it has a game server at all. A front-end-only host answers
+  // the page's own HTML instead of "ok", which tells the player something far more useful
+  // than "check your internet".
+  const probeForServer = useCallback(async () => {
+    try {
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 4000);
+      const res = await fetch(healthUrlFor(WS_URL), { signal: controller.signal, cache: 'no-store' });
+      clearTimeout(timer);
+      const body = (await res.text()).trim().toLowerCase();
+      setServerMissing(!(res.ok && body === 'ok'));
+    } catch {
+      // Could not even ask: stay with the generic "check your internet" message.
+      setServerMissing(false);
+    }
+  }, []);
+
   // The server could not be reached: keep retrying quietly during a game, and say so
   // plainly on the home screen.
   const handleUnreachable = useCallback(() => {
@@ -254,6 +283,9 @@ function App() {
       setUnreachable(true);
       // The player sees a friendly message; this says which address actually failed.
       console.warn(`[Firefly Feast] Could not reach the game server at ${WS_URL}`);
+      // Only probed for a same-origin server, where no CORS headers are needed and a
+      // failure genuinely means "nothing is serving the game here".
+      if (socketIsSameOrigin) probeForServer();
     }
   }, [scheduleResume]);
 
@@ -267,6 +299,7 @@ function App() {
     if (!silent) {
       setError('');
       setUnreachable(false);
+      setServerMissing(false);
       setConnecting(true);
     }
     const previous = wsRef.current;
@@ -547,7 +580,7 @@ function App() {
 
             {unreachable && (
               <div className="notice notice-warn" role="alert">
-                <p>{UNREACHABLE_MESSAGE}</p>
+                <p>{serverMissing ? NO_SERVER_MESSAGE : UNREACHABLE_MESSAGE}</p>
                 <button className="btn btn-ghost btn-block" onClick={tryAgain}>Try again ↻</button>
               </div>
             )}
