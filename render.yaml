@@ -3,6 +3,11 @@ services:
     name: firefly-feast
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build
+    # --include=dev is required: Render sets NODE_ENV=production, which would
+    # otherwise skip devDependencies and leave Vite missing at build time.
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm start
     healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"

@@ -9,9 +9,13 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 3001);
 const app = express();
 app.use(express.static(path.join(__dirname, 'dist')));
-app.get('/health', (_req, res) => res.json({ ok: true, game: 'Firefly Feast' }));
-app.get('*', (_req, res, next) => {
-  if (_req.path.startsWith('/ws')) return next();
+// Health checks (Render pings /health; /api/health is the same answer).
+const health = (_req, res) => res.type('text/plain').send('ok');
+app.get('/health', health);
+app.get('/api/health', health);
+// Everything else is the single-page client. /ws is left for the WebSocket upgrade.
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/ws')) return next();
   res.sendFile(path.join(__dirname, 'dist', 'index.html'), err => { if (err) res.status(404).send('Build the client first with npm run build.'); });
 });
 const server = createServer(app);
